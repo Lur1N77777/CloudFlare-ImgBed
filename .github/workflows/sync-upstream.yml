@@ -16,25 +16,23 @@ jobs:
     if: ${{ github.event.repository.fork }}
 
     steps:
-      # Step 1: run a standard checkout action
-      - name: Checkout target repo
-        uses: actions/checkout@v6
-
-      # Step 2: run the sync action
+      # Sync the fork's default branch with upstream using GitHub's native
+      # merge-upstream API. Unlike third-party actions that push commits with
+      # GITHUB_TOKEN, this performs an internal fast-forward and is NOT blocked
+      # when upstream changes files under .github/workflows/.
       - name: Sync upstream changes
         id: sync
-        uses: aormsby/Fork-Sync-With-Upstream-action@v3.4
-        with:
-          upstream_sync_repo: MarSeventh/CloudFlare-ImgBed
-          upstream_sync_branch: main
-          target_sync_branch: main
-          target_repo_token: ${{ secrets.GITHUB_TOKEN }} # automatically generated, no need to set
-
-          # Set test_mode true to run tests instead of the true action!!
-          test_mode: false
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          result="$(gh api -X POST "repos/${{ github.repository }}/merge-upstream" \
+            -f branch=main --jq '.merge_type')"
+          echo "merge_type=$result"
+          echo "merge_type=$result" >> "$GITHUB_OUTPUT"
 
       - name: Trigger Worker deploy
-        if: success()
+        if: ${{ success() && steps.sync.outputs.merge_type != 'none' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh workflow run deploy-worker.yml --repo "${{ github.repository }}" --ref main
@@ -42,6 +40,6 @@ jobs:
       - name: Sync check
         if: failure()
         run: |
-          echo "[Error] 由于上游仓库的 workflow 文件变更，导致 GitHub 自动暂停了本次自动更新，你需要手动 Sync Fork 一次。"
-          echo "[Error] Due to a change in the workflow file of the upstream repository, GitHub has automatically suspended the scheduled automatic update. You need to manually sync your fork."
+          echo "[Error] 自动同步失败。如果上游与本仓库出现分叉（diverged），merge-upstream 无法快进，需要手动处理。"
+          echo "[Error] Automatic sync failed. If the fork has diverged from upstream, merge-upstream cannot fast-forward and manual intervention is required."
           exit 1
