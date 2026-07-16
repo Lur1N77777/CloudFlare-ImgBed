@@ -5,8 +5,8 @@ permissions:
   actions: write
 
 on:
-  schedule:
-    - cron: "0 0 * * *" # every day
+  # This fork has diverged from upstream. Keep sync manual until the current
+  # conflicts are reviewed so the same failure does not notify every day.
   workflow_dispatch:
 
 jobs:
